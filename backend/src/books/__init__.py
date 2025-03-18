@@ -10,6 +10,7 @@ from sqlalchemy import delete, insert, or_, select, update
 from sqlalchemy.orm import joinedload
 from src.auth.oauth import admin_required
 from src.utils import atomic_transaction, session, sql_compile
+from sqlalchemy import text
 
 book_namespace = Namespace("Books", description="Book operations", path="/")
 
@@ -71,68 +72,71 @@ class Category(Resource):
 @book_namespace.route("/books")
 class Books(Resource):
     def get(self):
-        stmt = select(md.Book, md.Category.name).join(md.Category)
-        title = request.args.get("title")
+        """✅ Fetch books with filtering options."""
+        stmt = """
+            SELECT book.*, category.name AS book_category 
+            FROM book 
+            JOIN category ON book.category_id = category.id
+        """
+        
         or_list = []
+        title = request.args.get("title")
         if title:
-            or_list.append(md.Book.title.ilike(f"%{title}%"))
+            or_list.append(f"book.title LIKE '%{title}%'")
 
         author = request.args.get("author")
         if author:
-            or_list.append(md.Book.author.ilike(f"%{author}%"))
+            or_list.append(f"book.author LIKE '%{author}%'")
 
         isbn = request.args.get("isbn")
         if isbn:
-            or_list.append(md.Book.isbn.ilike(f"%{isbn}%"))
+            or_list.append(f"book.isbn LIKE '%{isbn}%'")
 
         category = request.args.get("category")
         if category:
-            or_list.append(md.Category.name == category)
+            or_list.append(f"category.name = '{category}'")
 
         if or_list:
-            stmt = stmt.where(or_(*or_list))
+            stmt += " WHERE " + " OR ".join(or_list)
 
-        books = session.scalars(stmt).all()
+        stmt += " ORDER BY book.title ASC"
+
+        # Execute query
+        books = session.execute(text(stmt)).mappings().all()
+
+        # Validate results with schema
         books = [pmd.ListBookSchema.model_validate(book) for book in books]
-        return jsonify(
-            {"books": [book.model_dump() for book in books], "queries": [sql_compile(stmt)]}
-        )
 
-    @admin_required
-    @atomic_transaction
-    @book_namespace.expect(new_book_input)
+        return jsonify({"books": [book.model_dump() for book in books], "queries": [stmt]})
+
+    @jwt_required()  # Require authentication
+    @atomic_transaction  # Ensure atomic DB operation
     def post(self):
+        """✅ Add a new book"""
         data = request.json
-        book = md.Book(
+
+        # ✅ Validate required fields
+        required_fields = ["title", "author", "category_id", "isbn", "quantity", "location"]
+        if not all(field in data for field in required_fields):
+            return make_response(jsonify(message="Missing required fields"), HTTPStatus.BAD_REQUEST)
+
+        # ✅ Insert new book into the database
+        stmt = insert(md.Book).values(
             title=data["title"],
             author=data["author"],
             category_id=data["category_id"],
             isbn=data["isbn"],
-            original_quantity=data["quantity"],
             current_quantity=data["quantity"],
             location=data["location"],
-            date_added=datetime.now(),
-            added_by_id=current_user.id,
+            date_added=datetime.now() , # ✅ Add this line
+            added_by_id=current_user.id  # ✅ Fix: Add the user who is adding the book
         )
 
-        # Generate INSERT statement
-        query = sql_compile(
-            insert(md.Book).values(
-                title=book.title,
-                author=book.author,
-                category_id=book.category_id,
-                isbn=book.isbn,
-                original_quantity=book.original_quantity,
-                current_quantity=book.current_quantity,
-                location=book.location,
-                date_added=book.date_added,
-                added_by_id=book.added_by_id,
-            )
-        )
+        queries = [sql_compile(stmt)]  # Store the query for debugging/logging
+        session.execute(stmt)
+        session.commit()
 
-        session.add(book)
-        session.flush()
-        return make_response(jsonify(book_id=book.id, queries=[query]), HTTPStatus.CREATED)
+        return make_response(jsonify(message="Book added successfully", queries=queries), HTTPStatus.CREATED)
 
 
 @book_namespace.route("/books/<int:book_id>")

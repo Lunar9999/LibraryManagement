@@ -48,20 +48,20 @@ class APIClient:
             response.raise_for_status()
             data = response.json()
             print("Backend Response:", data)  # Debug: Print the raw response
-            return data.get("borrows", [])  # Extract the "borrows" list
+            return data                                       #.get("borrows", [])  # Extract the "borrows" list
         except requests.exceptions.RequestException as e:
             print(f"Error fetching borrowed books: {e}")
             return None
 
     @staticmethod
     def add_book(token, book_data):
+        """Send a POST request to add a book and return the response object."""
         headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json"
         }
         response = requests.post(f"{BASE_URL}/books", json=book_data, headers=headers)
-        response.raise_for_status()  # Raise an error if the request fails
-        return response.json()
+        return response  # ✅ Return the full Response object, NOT response.json()
 
     @staticmethod
     def get_user_reports(user_id, token):

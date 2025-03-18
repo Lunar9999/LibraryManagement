@@ -3,19 +3,20 @@ from tkinter import messagebox
 from api_client import APIClient
 import requests
 from tkinter import ttk  
+BASE_URL = "http://127.0.0.1:5000"  # or your actual backend URL
 
 class BookManagement:
-    @staticmethod
-    def add_book(token, book_data):
-        if not token:
-            messagebox.showerror("Error", "You must be logged in to add a book.")
-            return
-        
-        try:
-            APIClient.add_book(token, book_data)
-            messagebox.showinfo("Success", "Book added successfully!")
-        except requests.exceptions.RequestException as e:
-            messagebox.showerror("Error", f"Failed to add book: {e}")
+
+    # @staticmethod
+    # def add_book(token, book_data):
+    #     """Send a POST request to add a book and return the response object."""
+    #     response = requests.post(
+    #         f"{APIClient.BASE_URL}/books",
+    #         json=book_data,
+    #         headers={"Authorization": f"Bearer {token}"}
+    #     )
+    #     return response  # ✅ Return the full Response object, NOT response.json()
+
 
     @staticmethod
     def borrow_book(token, book_id, borrower_id):
