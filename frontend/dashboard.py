@@ -103,7 +103,7 @@ class AdminPage:
 
             # ✅ Show query popup safely
             if hasattr(self, "show_query_window"):
-                self.show_query_window(queries)  # ✅ No error now!
+                self.show_sql_query(queries)  # ✅ No error now!
 
             # ✅ Populate Treeview with user data
             tree.delete(*tree.get_children())  # Clear previous data
@@ -256,7 +256,7 @@ class AdminPage:
             # ✅ Extract SQL queries and display in popup
             response_json = response.json()
             queries = response_json.get("queries", [])
-            self.show_sql_query(queries)
+            self.show_query_window(queries)
 
         except requests.exceptions.RequestException as e:
             messagebox.showerror("Error", f"Failed to add user: {e}")
@@ -482,6 +482,7 @@ class Dashboard:
         self.setup_buttons()       # 2️⃣ Place buttons below the search bar
         self.setup_treeview()      # 3️⃣ Finally, add the book list below everything
         tk.Button(self.button_frame, text="View Queries", command=self.view_borrowed_books, bg="gray", fg="white", width=20).pack(pady=5)
+        self.fetch_books()
 
 
         self.setup_query_box()  # ✅ Ensure query box is initialized
@@ -756,7 +757,7 @@ class Dashboard:
                 messagebox.showinfo("Success", "Book added successfully!")
                 window.destroy()
                 self.fetch_books()  # Refresh UI immediately
-                self.show_query_window(queries)  # ✅ Show the executed queries
+                self.show_sql_query(queries)  # ✅ Show the executed queries
             else:
                 error_message = response_data.get("message", "Unknown error")
                 messagebox.showerror("Error", f"Failed to add book: {error_message}")
@@ -842,7 +843,7 @@ class Dashboard:
             if response_data.get("message") == "Book borrowed successfully":
                 messagebox.showinfo("Success", "Book borrowed successfully!")
                 self.fetch_books()  # Refresh book list
-                self.show_query_window(queries)  # ✅ Show the executed queries
+                self.show_sql_query(queries)  # ✅ Show the executed queries
             else:
                 error_message = response_data.get("error", "Unknown error")
                 messagebox.showerror("Error", f"Failed to borrow book: {error_message}")
