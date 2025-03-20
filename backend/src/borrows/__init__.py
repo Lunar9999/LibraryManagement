@@ -1,26 +1,19 @@
 from datetime import datetime
 from http import HTTPStatus
 from uuid import uuid4
-from sqlalchemy.orm import aliased
-from datetime import datetime
 
 from flask import jsonify, make_response, request
 from flask_jwt_extended import current_user, jwt_required
 from flask_restx import Namespace, Resource, fields
-from sqlalchemy import and_, func, select, text, update, insert  # ✅ Added insert
+from sqlalchemy import (and_, func, insert, select, text,  # ✅ Added insert
+                        update)
+from sqlalchemy.orm import aliased
 
 import src.models as md
 import src.p_models as pmd
 from src.auth.oauth import admin_required
-from src.utils import (
-    PAYMENT_METHODS,
-    atomic_transaction,
-    calculate_due_date,
-    check_overdue_and_create_fine,
-    session,
-    sql_compile,
-)
-
+from src.utils import (PAYMENT_METHODS, atomic_transaction, calculate_due_date,
+                       check_overdue_and_create_fine, session, sql_compile)
 
 borrow_namespace = Namespace("Borrows", description="Borrow / Return operations", path="/")
 
@@ -144,8 +137,9 @@ class ReturnBook(Resource):
         # ✅ Fetch Borrow record along with Book details
         stmt = (
             select(md.Borrow, md.Book)
-            .join(md.Book, md.Borrow.book_id == md.Book.id)  # ✅ Ensure Book is included
-            .where(md.Borrow.id == borrow_id)
+           # no need for the join here since this is a simple to confirm existence of the borrow record
+            # .where(and_(md.Borrow.id == borrow_id, md.Borrow.is_returned.is_(False)))
+            .where(and_(md.Borrow.book_id == borrow_id, md.Borrow.is_returned.is_(False))) # search on book_id instead of borrow_id since receiving book_id from frontend
         )
         result = session.execute(stmt).first()
         
@@ -171,7 +165,7 @@ class ReturnBook(Resource):
 
         stmt = (
             update(md.Borrow)
-            .where(and_(md.Borrow.id == borrow_id, md.Borrow.is_returned.is_(False)))  # ✅ Prevents double returns
+            .where(and_(md.Borrow.book_id == borrow_id, md.Borrow.is_returned.is_(False))) # same here search on book_id instead of borrow_id
             .values(is_returned=True, return_date=datetime.now(), received_by_id=current_user.id)
         )
         result = session.execute(stmt)
