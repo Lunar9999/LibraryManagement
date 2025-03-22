@@ -10,7 +10,7 @@ class Config:
     JWT_REFRESH_TOKEN_EXPIRES = timedelta(minutes=60)
     JWT_SECRET_KEY = "super-secret-jwt"
     ALGORITHM = "HS256"
-    ACCESS_TOKEN_EXPIRES_MINUTES = 30
+    ACCESS_TOKEN_EXPIRES_MINUTES = 60
     DB = "sqlite"
     DIALECT = SqliteDialect
     SQLALCHEMY_DATABASE_URI = "sqlite:///db.sqlite"

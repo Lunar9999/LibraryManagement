@@ -50,7 +50,6 @@ pay_fine_input = borrow_namespace.model(
         ),
     },
 )
-
 @borrow_namespace.route("/borrow-book")
 class BorrowBook(Resource):
     @borrow_namespace.expect(borrow_book_input)
@@ -61,7 +60,6 @@ class BorrowBook(Resource):
         book_id = data["book_id"]
         borrower_id = data["borrower_id"]
 
-        # Ensure the borrower is the logged-in user
         if borrower_id != current_user.id:
             return make_response(
                 jsonify(error="You can only borrow books for yourself"),
@@ -95,17 +93,21 @@ class BorrowBook(Resource):
                 HTTPStatus.BAD_REQUEST,
             )
 
-        # ✅ Borrow the book
+        # ✅ Borrow the book and get the `borrow_id`
         due_date = calculate_due_date()
-        borrow_stmt = insert(md.Borrow).values(
-            book_id=book_id,
-            borrowed_by_id=borrower_id,
-            given_by_id=current_user.id,
-            borrow_date=datetime.now(),
-            due_date=due_date,
+        borrow_stmt = (
+            insert(md.Borrow)
+            .values(
+                book_id=book_id,
+                borrowed_by_id=borrower_id,
+                given_by_id=current_user.id,
+                borrow_date=datetime.now(),
+                due_date=due_date,
+            )
+            .returning(md.Borrow.id)  # 👈 Retrieve the ID of the inserted record
         )
         queries.append(sql_compile(borrow_stmt))
-        session.execute(borrow_stmt)
+        borrow_id = session.execute(borrow_stmt).scalar_one()  # Get the new borrow ID
 
         # ✅ Reduce book quantity properly
         stmt = update(md.Book).where(md.Book.id == book_id).values(
@@ -127,7 +129,11 @@ class BorrowBook(Resource):
         session.commit()  # ✅ Ensure transaction is committed
 
         return make_response(
-            jsonify(message="Book borrowed successfully", queries=queries),
+            jsonify(
+                message="Book borrowed successfully",
+                borrow_id=borrow_id,  # 👈 Include the `borrow_id` in response
+                queries=queries,
+            ),
             HTTPStatus.CREATED,
         )
 
@@ -135,25 +141,24 @@ class BorrowBook(Resource):
 @borrow_namespace.route("/return-book")
 class ReturnBook(Resource):
     @borrow_namespace.expect(return_book_input)
-    @admin_required
+    @jwt_required()  # Allow any authenticated user
     @atomic_transaction
     def post(self):
         data = request.json
         borrow_id = data["borrow_id"]
 
-        # ✅ Fetch Borrow record along with Book details
+        # Fetch Borrow record along with Book details
         stmt = (
             select(md.Borrow, md.Book)
-            .join(md.Book, md.Borrow.book_id == md.Book.id)  # ✅ Ensure Book is included
+            .join(md.Book, md.Borrow.book_id == md.Book.id)
             .where(md.Borrow.id == borrow_id)
         )
         result = session.execute(stmt).first()
-        
 
         if not result:
             return make_response(jsonify(error="Borrow record not found"), HTTPStatus.NOT_FOUND)
 
-        borrow, book = result  # ✅ Extract Borrow and Book objects
+        borrow, book = result
 
         if borrow.is_returned:
             print(f"🚨 DEBUG: Book '{book.title}' has already been returned!")
@@ -165,40 +170,46 @@ class ReturnBook(Resource):
                 HTTPStatus.BAD_REQUEST
             )
 
+        # Check if the user is the borrower or an admin
+        if borrow.borrowed_by_id != current_user.id and current_user.role != "admin":
+            return make_response(
+                jsonify(error="You are not authorized to return this book"),
+                HTTPStatus.FORBIDDEN
+            )
+
         now = datetime.now()
 
-        # ✅ Mark book as returned
-
+        # Mark book as returned
         stmt = (
             update(md.Borrow)
-            .where(and_(md.Borrow.id == borrow_id, md.Borrow.is_returned.is_(False)))  # ✅ Prevents double returns
+            .where(and_(md.Borrow.id == borrow_id, md.Borrow.is_returned.is_(False)))
             .values(is_returned=True, return_date=datetime.now(), received_by_id=current_user.id)
         )
         result = session.execute(stmt)
 
-        if result.rowcount == 0:  # 🚨 Means book was already returned
+        if result.rowcount == 0:
             return make_response(
                 jsonify(message="Book not found or already returned"),
                 HTTPStatus.BAD_REQUEST
             )
 
-        # ✅ Increase book quantity
+        # Increase book quantity
         session.execute(
             update(md.Book)
             .where(md.Book.id == borrow.book_id)
             .values(current_quantity=md.Book.current_quantity + 1)
         )
 
-        # ✅ Create Notification for Book Return
+        # Create Notification for Book Return
         notification_stmt = insert(md.Notification).values(
             user_id=borrow.borrowed_by_id,
-            message=f"You returned '{book.title}' on {now.strftime('%Y-%m-%d')}.",  # ✅ FIXED
+            message=f"You returned '{book.title}' on {now.strftime('%Y-%m-%d')}.",
             is_read=False,
             sent_date=datetime.now(),
         )
         session.execute(notification_stmt)
 
-        session.commit()  # ✅ Commit transaction
+        session.commit()
 
         return make_response(jsonify(message="Book returned successfully"), HTTPStatus.OK)
 

@@ -8,7 +8,7 @@ from flask_jwt_extended import (
     jwt_required,
 )
 from flask_restx import Namespace, Resource, fields
-from sqlalchemy import and_, insert, or_, select, update
+from sqlalchemy import and_, insert, or_, select, update, delete
 from sqlalchemy.orm import joinedload
 from src import models as md
 from src import p_models as pmd
@@ -171,55 +171,26 @@ class MakeAdmin(Resource):
         )
 
 
-# @auth_namespace.route("/users")
-# class ListUsers(Resource):
-#     @admin_required
-#     def get(self):
-#         stmt = select(md.UserAccount).order_by(md.UserAccount.first_name)
-#         email = request.args.get("email")
-#         if email:
-#             stmt = stmt.where(md.UserAccount.email.ilike(f"%{email}%"))
-
-#         name = request.args.get("name")
-#         if name:
-#             stmt = stmt.where(
-#                 or_(
-#                     md.UserAccount.first_name.ilike(f"%{name}%"),
-#                     md.UserAccount.last_name.ilike(f"%{name}%"),
-#                 )
-#             )
-#         users = session.execute(stmt).scalars().all()
-#         users = [pmd.ListUsersSchema.model_validate(user) for user in users]
-#         return {"users": [user.model_dump() for user in users], "queries": [sql_compile(stmt)]}
-
 @auth_namespace.route("/users")
 class ListUsers(Resource):
     @admin_required
     def get(self):
-        """✅ List all users including their activation status."""
-        stmt = select(
-            md.UserAccount.id,
-            md.UserAccount.first_name,  # ✅ Add this
-            md.UserAccount.last_name,   # ✅ Add this
-            md.UserAccount.email,
-            md.UserAccount.role,
-            md.UserAccount.is_active  # ✅ Include activation status
-        ).order_by(md.UserAccount.first_name)
+        stmt = select(md.UserAccount).order_by(md.UserAccount.first_name)
+        email = request.args.get("email")
+        if email:
+            stmt = stmt.where(md.UserAccount.email.ilike(f"%{email}%"))
 
-        users = session.execute(stmt).mappings().all()
-
-        return {
-            "users": [
-                {
-                    "id": user.id,
-                    "email": user.email,
-                    "role": user.role,
-                    "is_active": user.is_active  # ✅ Ensure it is named "is_active"
-                }
-                for user in users
-            ],
-            "queries": [sql_compile(stmt)]
-        }
+        name = request.args.get("name")
+        if name:
+            stmt = stmt.where(
+                or_(
+                    md.UserAccount.first_name.ilike(f"%{name}%"),
+                    md.UserAccount.last_name.ilike(f"%{name}%"),
+                )
+            )
+        users = session.execute(stmt).scalars().all()
+        users = [pmd.ListUsersSchema.model_validate(user) for user in users]
+        return {"users": [user.model_dump() for user in users], "queries": [sql_compile(stmt)]}
 
 
 @auth_namespace.route("/users/<int:user_id>")
@@ -252,55 +223,58 @@ class GetUser(Resource):
 
         user = schema.model_validate(user)
         return make_response(jsonify(user=user.model_dump(), queries=queries))
-    
-    
-@auth_namespace.route("/users", methods=["GET", "DELETE"])
-class ListUsers(Resource):
+
+    @auth_namespace.expect(update_user_input)
     @admin_required
-    def get(self):
-        """List all users."""
-        stmt = select(md.UserAccount).order_by(md.UserAccount.first_name)
-        email = request.args.get("email")
-        if email:
-            stmt = stmt.where(md.UserAccount.email.ilike(f"%{email}%"))
-
-        name = request.args.get("name")
-        if name:
-            stmt = stmt.where(
-                or_(
-                    md.UserAccount.first_name.ilike(f"%{name}%"),
-                    md.UserAccount.last_name.ilike(f"%{name}%"),
-                )
+    @atomic_transaction
+    def put(self, user_id):
+        data = request.json
+        valid_roles = ("student", "external")
+        role = data.get("role", None)
+        if role and role not in valid_roles:
+            return make_response(
+                jsonify(message=f"Invalid role. Must be one of {valid_roles}", queries=[]),
+                HTTPStatus.BAD_REQUEST,
             )
+        update_data = {}
+        for name in tuple(update_user_input.keys()):
+            if name in data:
+                update_data[name] = data[name]
 
-        users = session.execute(stmt).scalars().all()
-        users = [pmd.ListUsersSchema.model_validate(user) for user in users]
-        return {"users": [user.model_dump() for user in users], "queries": [sql_compile(stmt)]}
+        update_stmt = (
+            update(md.UserAccount).where(md.UserAccount.id == user_id).values(update_data)
+        )
+        queries = [sql_compile(update_stmt)]
+        result = session.execute(update_stmt)
+        if result.rowcount == 0:
+            return make_response(
+                jsonify(message="User not found", queries=queries), HTTPStatus.NOT_FOUND
+            )
+        return make_response(
+            jsonify(message="User updated successfully", queries=queries), HTTPStatus.OK
+        )
 
     @admin_required
     @atomic_transaction
-    def delete(self):
-        """✅ Delete a user by email (Fix: Ensure JSON Parsing & Commit)."""
-        data = request.get_json()  # ✅ Explicitly parse JSON
-        email = data.get("email", None)
-
-        if not email:
-            return make_response(jsonify(message="Email is required"), HTTPStatus.BAD_REQUEST)
-
-        stmt = select(md.UserAccount).where(md.UserAccount.email == email)
+    def delete(self, user_id):
+        """Delete a user by ID"""
+        stmt = select(md.UserAccount).where(md.UserAccount.id == user_id)
+        queries = [sql_compile(stmt)]
         user = session.execute(stmt).scalars().first()
 
         if not user:
             return make_response(
-                jsonify(message="User not found", queries=[sql_compile(stmt)]), HTTPStatus.NOT_FOUND
+                jsonify(message="User not found", queries=queries),
+                HTTPStatus.NOT_FOUND,
             )
 
-        session.delete(user)
-        session.commit()  # ✅ Ensure deletion is committed
+        delete_stmt = delete(md.UserAccount).where(md.UserAccount.id == user_id)
+        queries.append(sql_compile(delete_stmt))
+        session.execute(delete_stmt)
 
         return make_response(
-            jsonify(message=f"User {email} deleted successfully!", queries=[sql_compile(stmt)]), 
-            HTTPStatus.OK
+            jsonify(message="User deleted successfully", queries=queries),
+            HTTPStatus.OK,
         )
 
 

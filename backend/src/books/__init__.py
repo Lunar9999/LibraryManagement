@@ -73,10 +73,13 @@ class Category(Resource):
 class Books(Resource):
     def get(self):
         """✅ Fetch books with filtering options."""
+
+        # I modified query below so the books displayed on the UI are only those which have not been borrowed
         stmt = """
             SELECT book.*, category.name AS book_category 
             FROM book 
             JOIN category ON book.category_id = category.id
+            WHERE book.current_quantity >= 1
         """
         
         or_list = []
@@ -96,10 +99,13 @@ class Books(Resource):
         if category:
             or_list.append(f"category.name = '{category}'")
 
+        # Combine filters with "AND" instead of another "WHERE"
         if or_list:
-            stmt += " WHERE " + " OR ".join(or_list)
+            stmt += " AND " + " OR ".join(or_list)
 
         stmt += " ORDER BY book.title ASC"
+
+        print(f"Generated SQL Query: {stmt}")  # Debugging
 
         # Execute query
         books = session.execute(text(stmt)).mappings().all()
@@ -137,6 +143,8 @@ class Books(Resource):
         session.commit()
 
         return make_response(jsonify(message="Book added successfully", queries=queries), HTTPStatus.CREATED)
+
+
 
 
 @book_namespace.route("/books/<int:book_id>")

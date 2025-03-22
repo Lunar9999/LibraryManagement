@@ -31,13 +31,21 @@ class BookManagement:
             messagebox.showerror("Error", f"Failed to borrow book: {e}")
 
     @staticmethod
-    def return_book(token, book_id, borrower_id):
-        if not token or not borrower_id:
+    def return_book(token, borrow_id):
+        """
+        Return a book using the borrow_id.
+
+        Args:
+            token (str): The JWT token for authentication.
+            borrow_id (int): The ID of the borrow record.
+        """
+        if not token:
             messagebox.showerror("Error", "You must be logged in to return a book.")
             return
 
         try:
-            APIClient.return_book(token, book_id, borrower_id)
+            # Call the API to return the book
+            APIClient.return_book(token, borrow_id)
             messagebox.showinfo("Success", "Book returned successfully!")
         except requests.exceptions.RequestException as e:
             messagebox.showerror("Error", f"Failed to return book: {e}")

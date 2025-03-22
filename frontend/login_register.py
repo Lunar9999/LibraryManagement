@@ -52,7 +52,7 @@ class LoginRegister:
         self.login_button.pack(pady=15, ipadx=50, ipady=6)
 
         # Register Button (Bigger & More Visible)
-        self.register_button = tk.Button(self.login_frame, text="Create an Account", command=self.register_user, bg="green", fg="white", font=("Arial", 12, "bold"))
+        self.register_button = tk.Button(self.login_frame, text="Create an Account", command=self.open_registration_form, bg="green", fg="white", font=("Arial", 12, "bold"))
         self.register_button.pack(pady=5, ipadx=20, ipady=6)
 
     def login(self):
@@ -84,27 +84,91 @@ class LoginRegister:
         except requests.exceptions.RequestException as e:
             messagebox.showerror("Error", f"Login failed: {e}")
 
+    def open_registration_form(self):
+        # Destroy the login frame
+        self.login_frame.destroy()
+
+        # Create Registration Form
+        self.create_registration_form()
+
+    def create_registration_form(self):
+        # Frame for Registration
+        self.registration_frame = tk.Frame(self.root, bg="white", bd=5)
+        self.registration_frame.place(relx=0.5, rely=0.5, anchor="center", width=420, height=700)
+
+        # Title
+        tk.Label(self.registration_frame, text="Register", font=("Arial", 22, "bold"), bg="white", fg="black").pack(pady=10)
+
+        # First Name
+        tk.Label(self.registration_frame, text="First Name:", bg="white", font=("Arial", 14)).pack(pady=5)
+        self.first_name_entry = tk.Entry(self.registration_frame, font=("Arial", 14))
+        self.first_name_entry.pack(pady=5, ipady=6, ipadx=12, fill="x", padx=20)
+
+        # Last Name
+        tk.Label(self.registration_frame, text="Last Name:", bg="white", font=("Arial", 14)).pack(pady=5)
+        self.last_name_entry = tk.Entry(self.registration_frame, font=("Arial", 14))
+        self.last_name_entry.pack(pady=5, ipady=6, ipadx=12, fill="x", padx=20)
+
+        # Email
+        tk.Label(self.registration_frame, text="Email:", bg="white", font=("Arial", 14)).pack(pady=5)
+        self.email_entry = tk.Entry(self.registration_frame, font=("Arial", 14))
+        self.email_entry.pack(pady=5, ipady=6, ipadx=12, fill="x", padx=20)
+
+        # Password
+        tk.Label(self.registration_frame, text="Password:", bg="white", font=("Arial", 14)).pack(pady=5)
+        self.reg_password_entry = tk.Entry(self.registration_frame, show="*", font=("Arial", 14))
+        self.reg_password_entry.pack(pady=5, ipady=6, ipadx=12, fill="x", padx=20)
+
+        # Role
+        tk.Label(self.registration_frame, text="Role:", bg="white", font=("Arial", 14)).pack(pady=5)
+        self.role_entry = tk.Entry(self.registration_frame, font=("Arial", 14))
+        self.role_entry.pack(pady=5, ipady=6, ipadx=12, fill="x", padx=20)
+
+        # Register Button
+        self.register_button = tk.Button(self.registration_frame, text="Register", command=self.register_user, bg="blue", fg="white", font=("Arial", 14, "bold"))
+        self.register_button.pack(pady=15, ipadx=50, ipady=6)
+
+        # Back to Login Button
+        self.back_button = tk.Button(self.registration_frame, text="Back to Login", command=self.open_login_form, bg="gray", fg="white", font=("Arial", 12, "bold"))
+        self.back_button.pack(pady=5, ipadx=20, ipady=6)
+
+
     def register_user(self):
-        email = self.username_entry.get()
-        password = self.password_entry.get()
-        
-        if not email or not password:
-            messagebox.showerror("Error", "Please provide email and password.")
+        # Get user input
+        first_name = self.first_name_entry.get()
+        last_name = self.last_name_entry.get()
+        email = self.email_entry.get()
+        password = self.reg_password_entry.get()
+        role = self.role_entry.get()
+
+        # Validate input
+        if not first_name or not last_name or not email or not password or not role:
+            messagebox.showerror("Error", "Please fill in all fields.")
             return
-        
+
+        # Prepare user data
         user_data = {
+            "first_name": first_name,
+            "last_name": last_name,
             "email": email,
             "password": password,
-            "first_name": "FirstName",
-            "last_name": "LastName",
-            "role": "student"
+            "role": role
         }
 
         try:
+            # Send registration request
             APIClient.register(user_data)
             messagebox.showinfo("Success", "User registered! You can now login.")
+            self.open_login_form()  # Return to login form after successful registration
         except requests.exceptions.RequestException as e:
             messagebox.showerror("Error", f"Registration failed: {e}")
+
+    def open_login_form(self):
+        # Destroy the registration frame
+        self.registration_frame.destroy()
+
+        # Recreate the login form
+        self.create_login_form()
 
 # Run Application
 if __name__ == "__main__":

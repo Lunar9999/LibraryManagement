@@ -37,7 +37,7 @@ deactivate () {
 # unset irrelevant variables
 deactivate nondestructive
 
-VIRTUAL_ENV="C:\Users\evanj\OneDrive\desktop\librarymanagement\Database-project\venv"
+VIRTUAL_ENV="C:\Users\evanj\Downloads\librarymanagement\librarymanagement\Database-project\venv"
 export VIRTUAL_ENV
 
 _OLD_VIRTUAL_PATH="$PATH"

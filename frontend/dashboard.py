@@ -1,3 +1,5 @@
+from http import HTTPStatus
+from tkinter import simpledialog
 import requests
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -310,7 +312,7 @@ class AdminPage:
         canvas.create_image(0, 0, image=self.remove_user_bg_photo, anchor="nw")
 
         # ✅ Use `.place()` consistently (NO `row` and `column`)
-        tk.Label(remove_user_window, text="User Email:", bg="white").place(x=50, y=100)
+        tk.Label(remove_user_window, text="User ID:", bg="white").place(x=50, y=100)
         email_entry = tk.Entry(remove_user_window)
         email_entry.place(x=200, y=100, width=200)
 
@@ -320,27 +322,28 @@ class AdminPage:
         ), bg="red", fg="white")
         submit_button.place(x=200, y=150, width=100)
 
-    def remove_user(self, email, window):
-        """✅ Remove a user from the system."""
-        if not email:
-            messagebox.showerror("Error", "Email is required.")
+
+    def remove_user(self, user_id, window):
+        """✅ Remove a user from the system using their user ID."""
+        if not user_id:
+            messagebox.showerror("Error", "User ID is required.")
             return
 
-        confirm = messagebox.askyesno("Confirm", f"Are you sure you want to remove {email}?")
+        confirm = messagebox.askyesno("Confirm", f"Are you sure you want to remove user ID {user_id}?")
         if not confirm:
             return
 
         try:
-            # ✅ Ensure request sends JSON properly
+            # ✅ Update request to use user_id in the URL
             response = requests.delete(
-                f"{BASE_URL}/users",  # ✅ Keep the correct endpoint
-                json={"email": email},  # ✅ Send JSON properly
-                headers={"Authorization": f"Bearer {self.token}"}
+                f"{BASE_URL}/users/{user_id}",  # 🔥 Correct URL pattern
+                headers={"Authorization": f"Bearer {self.token}"},
+                 timeout=50  # Add a timeout
             )
             response.raise_for_status()
 
             queries = response.json().get("queries", ["No SQL queries available."])
-            messagebox.showinfo("Success", f"User {email} removed successfully!")
+            messagebox.showinfo("Success", f"User ID {user_id} removed successfully!")
             self.show_sql_query(queries)  # ✅ Show SQL queries in popup
 
             window.destroy()
@@ -473,6 +476,7 @@ class Dashboard:
         self.is_admin = is_admin  # Add a flag to check if the user is an admin
         self.user_id = user_id  # ✅ Store user_id here
         self.admin_window = None  # ✅ 
+        self.base_url = BASE_URL
 
         # Load the UI elements
         self.load_background_image()
@@ -481,7 +485,7 @@ class Dashboard:
         self.setup_search_frame()  # 1️⃣ Draw search bar first (topmost) 
         self.setup_buttons()       # 2️⃣ Place buttons below the search bar
         self.setup_treeview()      # 3️⃣ Finally, add the book list below everything
-        tk.Button(self.button_frame, text="View Queries", command=self.view_borrowed_books, bg="gray", fg="white", width=20).pack(pady=5)
+        #tk.Button(self.button_frame, text="View Queries", command=self.view_borrowed_books, bg="gray", fg="white", width=20).pack(pady=5)
         self.fetch_books()
 
 
@@ -851,27 +855,39 @@ class Dashboard:
         except requests.exceptions.RequestException as e:
             messagebox.showerror("Error", f"Failed to borrow book: {str(e)}")
 
-
     def return_selected_book(self):
-        selected_item = self.tree.selection()
-        if not selected_item:
-            messagebox.showerror("Error", "Please select a borrowed book to return.")
-            return
-
-        # Get the borrow_id from the selected item in the Treeview
-        borrow_id = self.tree.item(selected_item, "values")[0]  # Assuming borrow_id is the first column
-
         try:
+            # Prompt the user to enter the borrow_id
+            borrow_id = simpledialog.askinteger("Return Book", "Enter the Borrow ID:")
+            
+            # Check if the user provided a borrow_id
+            if borrow_id is None:
+                messagebox.showwarning("Cancelled", "Return book process cancelled.")
+                return
+
             # Send the return request to the backend
             response = requests.post(
                 f"{BASE_URL}/return-book",
                 json={"borrow_id": borrow_id},  # Send borrow_id
                 headers={"Authorization": f"Bearer {self.token}"}
             )
-            response.raise_for_status()
-            messagebox.showinfo("Success", "Book returned successfully!")
-            self.view_borrowed_books()  # Refresh the borrowed books list
+
+            # Handle the response
+            if response.status_code == HTTPStatus.OK:
+                messagebox.showinfo("Success", "Book returned successfully!")
+                self.view_borrowed_books()  # Refresh the borrowed books list
+            elif response.status_code == HTTPStatus.NOT_FOUND:
+                messagebox.showerror("Error", "Borrow record not found.")
+            elif response.status_code == HTTPStatus.BAD_REQUEST:
+                error_message = response.json().get("error", "Unknown error")
+                messagebox.showerror("Error", error_message)
+            elif response.status_code == HTTPStatus.FORBIDDEN:
+                messagebox.showerror("Error", "You are not authorized to return this book.")
+            else:
+                messagebox.showerror("Error", f"Failed to return book. Status code: {response.status_code}")
+
         except requests.exceptions.RequestException as e:
+            # Handle network or request errors
             messagebox.showerror("Error", f"Failed to return book: {e}")
 
 
